@@ -1,4 +1,4 @@
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 import os
 import httpx
 from dotenv import load_dotenv
@@ -6,6 +6,7 @@ import streamlit as st
 from io import StringIO
 from PyPDF2 import PdfReader
 import json
+import time
 
 #--------------udf-------------------------------------
 # Function to extract text from PDF
@@ -16,50 +17,127 @@ def read_pdf(file):
         text += page.extract_text()
     return text
 
-#-----------------modelSelection---------------------------
+#------------------UI----------------------------------------------------------
+st.set_page_config(page_title="The Analysis Bot", page_icon="🔍")
+st.title("🔍📈 The Analysis Bot")
 
-n = 4     # can be 1, 2, 3 or 4
-
-load_dotenv()
-api_key = os.getenv(f"OPENAI_API_KEY_{n}")  # Will fetch OPENAI_API_KEY_1, _2, or _3
-
-models = {
-    1: "deepseek/deepseek-chat-v3.1:free",
-    2: "google/gemini-2.5-flash-image-preview",
-    3: "openai/gpt-oss-20b:free",
-    4: "deepseek/deepseek-chat-v3.1:free"
-}
-
-
-#-----------------modelInitiliazation---------------------------
-
-
-client = httpx.Client(verify=False)
-
-llm = ChatOpenAI(
-base_url="https://openrouter.ai/api/v1",
-model = models.get(n),
-openai_api_key=api_key, 
-http_client =  client,
-temperature=0.90,
-streaming=True,
-)
-
-
-#------------------UI-------------------------------------------
-st.set_page_config(page_title="AI Chatbot", page_icon="🤖")
-st.title("🤖 AI Chatbot - TCS GenAI")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+if "file_uploaded" not in st.session_state:
+    st.session_state.file_uploaded = False
+
 if "file_text" not in st.session_state:
     st.session_state.file_text = ""
 
+if "filename" not in st.session_state:
+    st.session_state.filename = ""
+
+if "temperature" not in st.session_state:
+    st.session_state.temperature = 0.4  # Default temperature
+
+# ---- TEMPERATURE SLIDER ----
+st.session_state.temperature = st.slider(
+    "🌡️ Model Temperature (creativity)",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.4,  # 🔹 Default temperature
+    step=0.1,
+    help="Lower = more focused/deterministic, Higher = more creative responses."
+)
+
+#modelSelection
+models = {
+    1: "openai:tngtech/deepseek-r1t2-chimera:free",
+    2: "openai:z-ai/glm-4.5-air:free",
+    3: "openai:google/gemini-2.0-flash-exp:free",
+    4: "openai:deepseek/deepseek-r1-0528:free",
+    5: "openai:openai/gpt-oss-20b:free",
+    6: "ollama:gpt-oss:120b-cloud",
+    7: "ollama:deepseek-v3.1:671b-cloud",
+    8: "ollama:qwen3-vl:235b-cloud"
+}
+
+n = st.selectbox("Select a model:", options=list(models.keys()), format_func=lambda x: models[x])
+
+load_dotenv()
+api_key = os.getenv(f"OPENAI_API_KEY_{n}")  # Will fetch OPENAI_API_KEY_1, _2, or _3
+
+st.markdown("""
+    <style>
+        /* Global background color */
+        body {
+            background-color: #ADD8E6; /* Change this color to your desired background color */
+            font-family: 'Poppins', sans-serif;
+            margin: 0; /* Ensures there's no default margin */
+            height: 100vh; /* Ensures full height is covered */
+        }
+    
+            
+        /* Upload box */
+        .stFileUploader {
+            border: 2px dashed #6c63ff !important;
+            border-radius: 15px !important;
+            padding: 1rem;
+            background-color: #f8f9ff;
+        }
+
+        /* Text input */
+        .stTextInput>div>div>input {
+            border: 2px solid #6c63ff !important;
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 1rem;
+        }
+
+        /* Button style */
+        div.stButton > button:first-child {
+            background-color: #6c63ff;
+            color: white;
+            font-weight: 600;
+            border-radius: 10px;
+            padding: 0.6rem 1.5rem;
+            height: 50px;
+            width: 200px;
+            border: none;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+
+        div.stButton > button:first-child:hover {
+            background-color: #574bff;
+            transform: translateY(-3px);
+        }
+            
+    </style>
+""", unsafe_allow_html=True)
+
+#------------------chatHistoryInitiliazation
 for message in st.session_state.chat_history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+#------------------------------------------------------------------------------------------
 
+
+
+#-----------------modelInitiliazation------------------------------------------------------
+client = httpx.Client(verify=False)
+
+if n>5:
+    base_url="http://127.0.0.1:11434"
+else:
+    base_url="https://openrouter.ai/api/v1"
+ 
+
+llm = init_chat_model(
+base_url=base_url,
+model = models.get(n),
+openai_api_key=api_key, 
+http_client =  client,
+temperature=st.session_state.temperature,
+streaming=True,
+)
 
 #--------------------------------------------input------------------------------------------
 
